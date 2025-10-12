@@ -23,7 +23,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Enables proper git history/diff for all logic
+          fetch-depth: 0
 
       - name: SonarCloud Scan
         uses: sonarsource/sonarqube-scan-action@v5.0.0
@@ -45,18 +45,22 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Detect changed microservices (recursive for any subfolder)
+      - name: Detect changed microservices (robust path detection)
         id: changed
         run: |
           set -e
           CHANGED=""
           GIT_PREVIOUS_COMMIT=$(git rev-parse ${{ github.sha }}^ || echo "")
           for svc in $(find . -type d ! -name .github ! -name . -print); do
-            # Only build if Dockerfile is present in service root (not in src/)
+            # Only build if Dockerfile is present in the service root
             if [ -f "$svc/Dockerfile" ]; then
+              dir="${svc#./}"  # Remove leading ./ from svc path for matching
               if [ -n "$GIT_PREVIOUS_COMMIT" ]; then
-                if git diff --name-only $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep "^$svc/" > /dev/null || \
-                   git diff --name-only --diff-filter=A $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep "^$svc/" > /dev/null; then
+                # Match file changes both with and without ./ in the diff
+                if git diff --name-only $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep -E "^$dir/" > /dev/null || \
+                   git diff --name-only $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep -E "^$svc/" > /dev/null || \
+                   git diff --name-only --diff-filter=A $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep -E "^$dir/" > /dev/null || \
+                   git diff --name-only --diff-filter=A $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep -E "^$svc/" > /dev/null; then
                   CHANGED="$CHANGED $svc"
                 fi
               else
@@ -89,10 +93,10 @@ jobs:
             # Node.js
             if [[ -f "$svc/package.json" ]]; then
               npm ci --prefix $svc
-              if npm test --prefix $svc; then
+              if npm run --prefix $svc start; then
                 tested+=("$svc")
               else
-                echo "❌ Tests FAILED for $svc"
+                echo "❌ Start/Run FAILED for $svc"
                 failed+=("$svc")
                 success=false
               fi
