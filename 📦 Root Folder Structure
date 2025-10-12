@@ -1,0 +1,54 @@
+amazon-clone/
+├── docker-compose.yml
+├── README.md
+├── .env                # Shared environment variables (non-secrets)
+├── scripts/            # Reusable shell scripts / helper tools
+│   └── start-all.sh
+├── gateway/            # API Gateway (e.g., Nginx, Traefik)
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   └── traefik.yml
+├── catalog-service/
+│   ├── Dockerfile      # Multi-stage!
+│   ├── app.js
+│   ├── package.json
+│   └── ...             # Source, configs
+├── auth-service/
+│   ├── Dockerfile
+│   ├── app.js
+│   ├── package.json
+│   └── ...
+├── cart-service/
+│   ├── Dockerfile
+│   ├── app.js
+│   ├── package.json
+│   └── ...
+├── order-service/
+│   ├── Dockerfile
+│   ├── app.js
+│   ├── package.json
+│   └── ...
+├── payment-service/
+│   ├── Dockerfile
+│   ├── app.js
+│   ├── package.json
+│   └── ...
+├── notification-service/
+│   ├── Dockerfile
+│   ├── app.js
+│   ├── package.json
+│   └── ...
+├── frontend/
+│   ├── Dockerfile      # Multi-stage!
+│   ├── package.json
+│   ├── public/
+│   └── src/
+│       └── App.js
+├── db/
+│   ├── Dockerfile      # If using a custom DB image or migration tools
+│   └── migrations/
+│       └── init.sql    # Sample schema/data
+├── logging/
+│   ├── Dockerfile      # Central log/pipeline agent (e.g., ELK, Promtail)
+├── monitoring/
+│   ├── Dockerfile      # Prometheus, Grafana setup

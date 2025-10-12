@@ -1,0 +1,228 @@
+name: Build, Scan, and Push Microservices (Multi-language, Future-proof)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+env:
+  SONAR_PROJECT_KEY: your_sonarcloud_project_key
+  SONAR_ORGANIZATION: your_sonarcloud_organization
+
+jobs:
+  build_test_scan_push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: SonarCloud Scan
+        uses: sonarsource/sonarqube-scan-action@v5.0.0
+        with:
+          projectBaseDir: .
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
+            -Dsonar.branch.name=${{ github.ref_name }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Detect changed microservices (auto, any language)
+        id: changed
+        run: |
+          set -e
+          CHANGED=""
+          # Find all microservice folders with a Dockerfile
+          for svc in $(find . -maxdepth 1 -type d ! -name .github ! -name . -print); do
+            dir=$(basename $svc)
+            if [ -f "$dir/Dockerfile" ]; then
+              if git diff --name-only ${{ github.sha }}^ ${{ github.sha }} | grep "^$dir/" > /dev/null; then
+                  CHANGED="$CHANGED $dir"
+              fi
+            fi
+          done
+          if [ -z "$CHANGED" ]; then
+            echo "No microservices changed. Skipping build."
+          fi
+          echo "changed_svcs=$CHANGED" >> $GITHUB_ENV
+
+      - name: Build, Test, Scan, Push & Summary
+        if: env.changed_svcs != ''
+        run: |
+          set -e
+          built=()
+          tested=()
+          scanned=()
+          pushed=()
+          skipped=()
+          failed=()
+          svclist="${{ env.changed_svcs }}"
+          VERSION="v1.${GITHUB_RUN_NUMBER}"
+          echo "Starting pipeline for: $svclist"
+          for svc in $svclist; do
+            echo "====== $svc ======"
+            success=true
+
+            # Node.js
+            if [[ -f "$svc/package.json" ]]; then
+              npm ci --prefix $svc
+              if npm test --prefix $svc; then
+                tested+=("$svc")
+              else
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
+                success=false
+              fi
+
+            # Go
+            elif [[ -f "$svc/go.mod" ]]; then
+              cd $svc && if go test ./...; then
+                tested+=("$svc")
+                cd ..
+              else
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
+                cd ..
+                success=false
+              fi
+
+            # Python
+            elif [[ -f "$svc/requirements.txt" ]]; then
+              pip install -r $svc/requirements.txt
+              if pytest $svc; then
+                tested+=("$svc")
+              else
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
+                success=false
+              fi
+
+            # Java/Maven
+            elif [[ -f "$svc/pom.xml" ]]; then
+              cd $svc && if mvn test; then
+                tested+=("$svc")
+                cd ..
+              else
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
+                cd ..
+                success=false
+              fi
+
+            # .NET Core
+            elif ls $svc/*.csproj 1> /dev/null 2>&1; then
+              cd $svc && dotnet restore
+              if dotnet test; then
+                tested+=("$svc")
+              else
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
+                success=false
+              fi
+              cd ..
+
+            # Ruby
+            elif [[ -f "$svc/Gemfile" ]]; then
+              cd $svc && bundle install
+              if rake test; then
+                tested+=("$svc")
+              else
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
+                success=false
+              fi
+              cd ..
+
+            # Rust
+            elif [[ -f "$svc/Cargo.toml" ]]; then
+              cd $svc
+              if cargo test; then
+                tested+=("$svc")
+              else
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
+                success=false
+              fi
+              cd ..
+
+            # PHP
+            elif [[ -f "$svc/composer.json" ]]; then
+              cd $svc && composer install
+              if phpunit; then
+                tested+=("$svc")
+              else
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
+                success=false
+              fi
+              cd ..
+
+            else
+              skipped+=("$svc")
+              echo "⏭️ Skipping tests for $svc (no recognizable language indicator found)"
+            fi
+
+            # Only build/scan/push if tests passed or were skipped
+            if [ "$success" = true ]; then
+              echo "🐳 Building Docker image for $svc"
+              if docker build -t ${{ secrets.DOCKER_USERNAME }}/$svc:latest -t ${{ secrets.DOCKER_USERNAME }}/$svc:$VERSION ./$svc; then
+                built+=("$svc")
+                echo "🔍 Scanning $svc image with Trivy"
+                if docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity HIGH,CRITICAL ${{ secrets.DOCKER_USERNAME }}/$svc:latest; then
+                  scanned+=("$svc")
+                  echo "📤 Pushing $svc images to Docker Hub"
+                  if docker push ${{ secrets.DOCKER_USERNAME }}/$svc:latest && docker push ${{ secrets.DOCKER_USERNAME }}/$svc:$VERSION; then
+                    pushed+=("$svc")
+                    echo "✅ $svc COMPLETED SUCCESSFULLY"
+                  else
+                    echo "❌ Push FAILED for $svc"
+                    failed+=("$svc")
+                    success=false
+                  fi
+                else
+                  echo "❌ Trivy scan FAILED for $svc"
+                  failed+=("$svc")
+                  success=false
+                fi
+              else
+                echo "❌ Build FAILED for $svc"
+                failed+=("$svc")
+                success=false
+              fi
+            else
+              skipped+=("$svc")
+              echo "⚠️ Skipping build/scan/push for $svc due to earlier failures"
+            fi
+          done
+
+          echo ""
+          echo "============= PIPELINE SUMMARY ============="
+          echo "Built:     ${built[*]}"
+          echo "Tested:    ${tested[*]}"
+          echo "Scanned:   ${scanned[*]}"
+          echo "Pushed:    ${pushed[*]}"
+          echo "Skipped:   ${skipped[*]}"
+          echo "Failed:    ${failed[*]}"
+          echo "============================================"
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "❌ PIPELINE FAILED (some builds/tests/scans/pushes did not succeed)"
+            exit 1
+          else
+            echo "🎉 ALL SERVICES BUILT, TESTED, SCANNED & PUSHED SUCCESSFULLY"
+          fi
