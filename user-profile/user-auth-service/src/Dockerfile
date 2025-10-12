@@ -1,11 +1,10 @@
 FROM node:18 AS builder
-WORKDIR /usr/src/app
+WORKDIR /user-auth-service/src/app
 COPY package.json .
 RUN npm ci
 COPY . .
 FROM node:18-alpine
-WORKDIR /usr/src/app
-COPY --from=builder /usr/src/app ./
+WORKDIR /user-auth-service/src/app
+COPY --from=builder /user-auth-service/src/app ./
 EXPOSE 4000
 CMD ["node", "src/app.js"]
-
