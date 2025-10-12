@@ -8,3 +8,4 @@ WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app ./
 EXPOSE 4000
 CMD ["node", "src/app.js"]
+
