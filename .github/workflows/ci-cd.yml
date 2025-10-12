@@ -23,7 +23,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # <-- This is critical! Enables full git history for diff detection.
+          fetch-depth: 0  # Enables proper git history/diff for all logic
 
       - name: SonarCloud Scan
         uses: sonarsource/sonarqube-scan-action@v5.0.0
@@ -51,17 +51,15 @@ jobs:
           set -e
           CHANGED=""
           GIT_PREVIOUS_COMMIT=$(git rev-parse ${{ github.sha }}^ || echo "")
-          # Find all directories recursively (supports nested microservices)
           for svc in $(find . -type d ! -name .github ! -name . -print); do
+            # Only build if Dockerfile is present in service root (not in src/)
             if [ -f "$svc/Dockerfile" ]; then
-              # Only run diff if previous commit exists
               if [ -n "$GIT_PREVIOUS_COMMIT" ]; then
                 if git diff --name-only $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep "^$svc/" > /dev/null || \
                    git diff --name-only --diff-filter=A $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep "^$svc/" > /dev/null; then
                   CHANGED="$CHANGED $svc"
                 fi
               else
-                # On initial commits (no previous sha), consider all microservices as changed
                 CHANGED="$CHANGED $svc"
               fi
             fi
