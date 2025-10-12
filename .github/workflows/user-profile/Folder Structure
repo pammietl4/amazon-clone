@@ -1,0 +1,23 @@
+user-profile-platform/
+├── user-auth-service/            # Handles login, registration, password, tokens
+│   ├── Dockerfile
+│   ├── src/...
+├── user-core-profile-service/    # Manages basic profile info
+│   ├── Dockerfile
+│   ├── src/...
+├── user-address-service/         # Manages saved addresses/locations
+│   ├── Dockerfile
+│   ├── src/...
+├── user-preferences-service/     # Cuisines, notification settings, etc.
+│   ├── Dockerfile
+│   ├── src/...
+├── user-history-service/         # Track orders, views, suggestions
+│   ├── Dockerfile
+│   ├── src/...
+├── user-rewards-service/         # Loyalty, points, badges
+│   ├── Dockerfile
+│   ├── src/...
+├── .github/
+│   └── workflows/
+│       └── ci-cd.yml             # Multi-language, auto-detect pipeline
+├── README.md
