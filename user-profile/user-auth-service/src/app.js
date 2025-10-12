@@ -28,3 +28,5 @@ app.post('/login', (req, res) => {
 });
 
 app.listen(4000, () => console.log('User Auth Service running on 4000'));
+
+# Export app for testing
