@@ -12,8 +12,8 @@ permissions:
   security-events: write
 
 env:
-  SONAR_PROJECT_KEY: your_sonarcloud_project_key
-  SONAR_ORGANIZATION: your_sonarcloud_organization
+  SONAR_PROJECT_KEY: pammietl4_amazon-clone
+  SONAR_ORGANIZATION: pammietl4
 
 jobs:
   build_test_scan_push:
