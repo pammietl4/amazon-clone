@@ -43,19 +43,19 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Detect changed microservices (auto, any language)
+      - name: Detect changed microservices (recursive for any subfolder)
         id: changed
         run: |
           set -e
           CHANGED=""
-          for svc in $(find . -maxdepth 1 -type d ! -name .github ! -name . -print); do
-            dir=$(basename $svc)
-            # Only build for folders with 'Dockerfile' (case sensitive)
-            if [ -f "$dir/Dockerfile" ]; then
-              # Check if ANY file in the directory was changed OR newly added (A)
-              if git diff --name-only ${{ github.sha }}^ ${{ github.sha }} | grep "^$dir/" > /dev/null || \
-                 git diff --name-only --diff-filter=A ${{ github.sha }}^ ${{ github.sha }} | grep "^$dir/" > /dev/null; then
-                CHANGED="$CHANGED $dir"
+          # Find all directories recursively (supports nested microservices)
+          for svc in $(find . -type d ! -name .github ! -name . -print); do
+            # Only process folders that contain a case-sensitive 'Dockerfile'
+            if [ -f "$svc/Dockerfile" ]; then
+              # Detect any modified or newly added file inside the service folder
+              if git diff --name-only ${{ github.sha }}^ ${{ github.sha }} | grep "^$svc/" > /dev/null || \
+                 git diff --name-only --diff-filter=A ${{ github.sha }}^ ${{ github.sha }} | grep "^$svc/" > /dev/null; then
+                CHANGED="$CHANGED $svc"
               fi
             fi
           done
