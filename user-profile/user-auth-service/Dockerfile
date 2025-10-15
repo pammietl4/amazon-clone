@@ -1,10 +1,10 @@
-FROM node:18 AS builder
+FROM node:24 AS builder
 WORKDIR /usr/src/app
 COPY package.json .
 RUN npm ci
 COPY . .
 
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app ./
 EXPOSE 4000
