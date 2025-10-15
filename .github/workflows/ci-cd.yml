@@ -192,19 +192,23 @@ jobs:
           if [ -z "$CHANGED" ]; then
             echo "No microservices changed. Skipping build."
           fi
-          echo "changed_svcs=$CHANGED" >> $GITHUB_ENV
-
+          # normalize whitespace and expose as step output so later steps can use it at runtime
+          CHANGED=$(echo $CHANGED | sed 's/^ *//; s/  */ /g')
       - name: Build, Test, Scan, Push & Summary
-        if: env.changed_svcs != ''
+        if: ${{ steps.changed.outputs.svcs != '' }}
+        env:
+          CHANGED_SVCS: ${{ steps.changed.outputs.svcs }}
         run: |
           set -e
+          built=()
+          tested=()
           built=()
           tested=()
           scanned=()
           pushed=()
           skipped=()
           failed=()
-          svclist="${{ env.changed_svcs }}"
+          svclist="${CHANGED_SVCS}"
           VERSION="v1.${GITHUB_RUN_NUMBER}"
           echo "Starting pipeline for: $svclist"
           for svc in $svclist; do
