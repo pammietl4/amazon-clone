@@ -11,6 +11,10 @@ permissions:
   contents: read
   security-events: write
 
+env:
+  SONAR_PROJECT_KEY: pammietl4_amazon-clone
+  SONAR_ORGANIZATION: pammietl4
+
 jobs:
   build_test_scan_push:
     runs-on: ubuntu-latest
