@@ -1,10 +1,10 @@
-name: Build, Scan, and Push Microservices
+name: Build, Scan, and Push Microservices (Multi-language, Future-proof)
 
 on:
   push:
-    branches: [ main, master ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ main, master ]
+    branches: ["main", "master"]
 
 permissions:
   actions: read
@@ -12,45 +12,15 @@ permissions:
   security-events: write
 
 env:
-  SONARPROJECTKEY: pammietl4amazon-clone
-  SONARORGANIZATION: pammietl4
+  SONAR_PROJECT_KEY: pammietl4_amazon-clone
+  SONAR_ORGANIZATION: pammietl4
 
 jobs:
-  build-test-scan-push:
+  build_test_scan_push:
     runs-on: ubuntu-latest
-    steps:
-      - name: Check/install essential DevOps stack
-        run: |
-          sudo apt-get update
-          # Node.js
-          if ! command -v node > /dev/null 2>&1; then curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -; sudo apt-get install -y nodejs; fi
-          # Docker
-          if ! command -v docker > /dev/null 2>&1; then curl -fsSL https://get.docker.com -o get-docker.sh; sh get-docker.sh; sudo usermod -aG docker $USER; newgrp docker; fi
-          # Docker Compose
-          if ! command -v docker-compose > /dev/null 2>&1; then sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose; sudo chmod +x /usr/local/bin/docker-compose; fi
-          # Python/Pip
-          if ! command -v python3 > /dev/null 2>&1; then sudo apt-get install -y python3 python3-pip; fi
-          # Go
-          if ! command -v go > /dev/null 2>&1; then sudo apt-get install -y golang; fi
-          # Maven/Java
-          if ! command -v mvn > /dev/null 2>&1; then sudo apt-get install -y maven openjdk-11-jdk; fi
-          # Dotnet
-          if ! command -v dotnet > /dev/null 2>&1; then wget https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb; sudo dpkg -i packages-microsoft-prod.deb; sudo apt-get install -y apt-transport-https dotnet-sdk-6.0; fi
-          # Ruby/Bundler
-          if ! command -v ruby > /dev/null 2>&1; then sudo apt-get install -y ruby-full; sudo gem install bundler; fi
-          # Rust
-          if ! command -v cargo > /dev/null 2>&1; then curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; source $HOME/.cargo/env; fi
-          # PHP/Composer
-          if ! command -v php > /dev/null 2>&1; then sudo apt-get install -y php php-cli php-mbstring unzip curl; fi
-          if ! command -v composer > /dev/null 2>&1; then curl -sS https://getcomposer.org/installer | php; sudo mv composer.phar /usr/local/bin/composer; fi
-          # kubectl
-          if ! command -v kubectl > /dev/null 2>&1; then curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"; sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl; fi
-          # Helm
-          if ! command -v helm > /dev/null 2>&1; then curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash; fi
-          # SonarScanner
-          if ! command -v sonar-scanner > /dev/null 2>&1; then sudo apt-get install -y openjdk-11-jre; wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.7.0.2747-linux.zip; unzip sonar-scanner-cli-4.7.0.2747-linux.zip; sudo mv sonar-scanner-4.7.0.2747-linux /opt/sonar-scanner; sudo ln -s /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/sonar-scanner; fi
 
-      - name: Checkout cod
+    steps:
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -59,12 +29,12 @@ jobs:
         uses: sonarsource/sonarqube-scan-action@v5.0.0
         with:
           projectBaseDir: .
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
+            -Dsonar.branch.name=${{ github.ref_name }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        args: >
-          -Dsonar.projectKey=pammietl4amazon-clone
-          -Dsonar.organization=pammietl4
-          -Dsonar.host.url=https://sonarcloud.io
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -75,17 +45,22 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Detect changed microservices (recursive)
+      - name: Detect changed microservices (robust path detection)
         id: changed
         run: |
           set -e
           CHANGED=""
-          GITPREVIOUSCOMMIT=$(git rev-parse ${{ github.sha }})
-          echo "Detecting changed microservices..."
-          for svc in $(find . -type d ! -name ".github" ! -name "." -print); do
+          GIT_PREVIOUS_COMMIT=$(git rev-parse ${{ github.sha }}^ || echo "")
+          for svc in $(find . -type d ! -name .github ! -name . -print); do
+            # Only build if Dockerfile is present in the service root
             if [ -f "$svc/Dockerfile" ]; then
-              if [ -n "$GITPREVIOUSCOMMIT" ]; then
-                if git diff --name-only $GITPREVIOUSCOMMIT ${{ github.sha }} | grep $svc > /dev/null || git diff --name-only --diff-filter=A $GITPREVIOUSCOMMIT ${{ github.sha }} | grep $svc > /dev/null; then
+              dir="${svc#./}"  # Remove leading ./ from svc path for matching
+              if [ -n "$GIT_PREVIOUS_COMMIT" ]; then
+                # Match file changes both with and without ./ in the diff
+                if git diff --name-only $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep -E "^$dir/" > /dev/null || \
+                   git diff --name-only $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep -E "^$svc/" > /dev/null || \
+                   git diff --name-only --diff-filter=A $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep -E "^$dir/" > /dev/null || \
+                   git diff --name-only --diff-filter=A $GIT_PREVIOUS_COMMIT ${{ github.sha }} | grep -E "^$svc/" > /dev/null; then
                   CHANGED="$CHANGED $svc"
                 fi
               else
@@ -93,156 +68,160 @@ jobs:
               fi
             fi
           done
-          echo "Changed services: $CHANGED"
-          echo "::set-output name=svcs::$CHANGED"
-
-      - name: Build, Test, Scan, Push microservices
-        if: steps.changed.outputs.svcs != ''
-        env:
-          CHANGEDSVCS: ${{ steps.changed.outputs.svcs }}
+          if [ -z "$CHANGED" ]; then
+            echo "No microservices changed. Skipping build."
+          fi
+          echo "changed_svcs=$CHANGED" >> $GITHUB_ENV
+      - name: Build, Test, Scan, Push & Summary
+        if: env.changed_svcs != ''
         run: |
           set -e
-          built=""
-          tested=""
-          scanned=""
-          pushed=""
-          skipped=""
-          failed=""
-          svclist=${CHANGEDSVCS}
-          VERSION=v1.${GITHUB_RUN_NUMBER}
-          echo "Starting pipeline for services: $svclist"
+          built=()
+          tested=()
+          scanned=()
+          pushed=()
+          skipped=()
+          failed=()
+          svclist="${{ env.changed_svcs }}"
+          VERSION="v1.${GITHUB_RUN_NUMBER}"
+          echo "Starting pipeline for: $svclist"
           for svc in $svclist; do
+            echo "====== $svc ======"
             success=true
-            if [ -f "$svc/package.json" ]; then
-              if [ ! -f "$svc/package-lock.json" ]; then
-                npm install --prefix $svc
-              fi
+            # Node.js
+            if [[ -f "$svc/package.json" ]]; then
               npm ci --prefix $svc
-              if npm test --prefix $svc; then
-                tested="$tested $svc"
+              if npm run --prefix $svc start; then
+                tested+=("$svc")
               else
-                echo "Tests FAILED for $svc"
-                failed="$failed $svc"
+                echo "❌ Start/Run FAILED for $svc"
+                failed+=("$svc")
                 success=false
               fi
-            elif [ -f "$svc/go.mod" ]; then
-              cd $svc
-              if go test ./...; then
-                tested="$tested $svc"
+            # Go
+            elif [[ -f "$svc/go.mod" ]]; then
+              cd $svc && if go test ./...; then
+                tested+=("$svc")
+                cd ..
               else
-                echo "Tests FAILED for $svc"
-                failed="$failed $svc"
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
+                cd ..
                 success=false
               fi
-              cd ..
-            elif [ -f "$svc/requirements.txt" ]; then
+            # Python
+            elif [[ -f "$svc/requirements.txt" ]]; then
               pip install -r $svc/requirements.txt
               if pytest $svc; then
-                tested="$tested $svc"
+                tested+=("$svc")
               else
-                echo "Tests FAILED for $svc"
-                failed="$failed $svc"
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
                 success=false
               fi
-            elif [ -f "$svc/pom.xml" ]; then
-              cd $svc
-              if mvn test; then
-                tested="$tested $svc"
+            # Java/Maven
+            elif [[ -f "$svc/pom.xml" ]]; then
+              cd $svc && if mvn test; then
+                tested+=("$svc")
+                cd ..
               else
-                echo "Tests FAILED for $svc"
-                failed="$failed $svc"
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
+                cd ..
                 success=false
               fi
-              cd ..
+            # .NET Core
             elif ls $svc/*.csproj 1> /dev/null 2>&1; then
-              cd $svc
-              dotnet restore
+              cd $svc && dotnet restore
               if dotnet test; then
-                tested="$tested $svc"
+                tested+=("$svc")
               else
-                echo "Tests FAILED for $svc"
-                failed="$failed $svc"
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
                 success=false
               fi
               cd ..
-            elif [ -f "$svc/Gemfile" ]; then
-              cd $svc
-              bundle install
+            # Ruby
+            elif [[ -f "$svc/Gemfile" ]]; then
+              cd $svc && bundle install
               if rake test; then
-                tested="$tested $svc"
+                tested+=("$svc")
               else
-                echo "Tests FAILED for $svc"
-                failed="$failed $svc"
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
                 success=false
               fi
               cd ..
-            elif [ -f "$svc/Cargo.toml" ]; then
+            # Rust
+            elif [[ -f "$svc/Cargo.toml" ]]; then
               cd $svc
               if cargo test; then
-                tested="$tested $svc"
+                tested+=("$svc")
               else
-                echo "Tests FAILED for $svc"
-                failed="$failed $svc"
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
                 success=false
               fi
               cd ..
-            elif [ -f "$svc/composer.json" ]; then
-              cd $svc
-              composer install
+            # PHP
+            elif [[ -f "$svc/composer.json" ]]; then
+              cd $svc && composer install
               if phpunit; then
-                tested="$tested $svc"
+                tested+=("$svc")
               else
-                echo "Tests FAILED for $svc"
-                failed="$failed $svc"
+                echo "❌ Tests FAILED for $svc"
+                failed+=("$svc")
                 success=false
               fi
               cd ..
             else
-              skipped="$skipped $svc"
-              echo "Skipping tests for $svc; no recognizable language indicator found"
+              skipped+=("$svc")
+              echo "⏭️ Skipping tests for $svc (no recognizable language indicator found)"
             fi
-
+            # Only build/scan/push if tests passed or were skipped
             if [ "$success" = true ]; then
-              echo "Building Docker image for $svc"
+              echo "🐳 Building Docker image for $svc"
               if docker build -t ${{ secrets.DOCKER_USERNAME }}/$svc:latest -t ${{ secrets.DOCKER_USERNAME }}/$svc:$VERSION ./$svc; then
-                built="$built $svc"
-                echo "Scanning $svc image with Trivy"
-                if docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity HIGH,CRITICAL "${{ secrets.DOCKER_USERNAME }}/$svc:latest"; then
-                  scanned="$scanned $svc"
-                  echo "Pushing $svc images to Docker Hub"
+                built+=("$svc")
+                echo "🔍 Scanning $svc image with Trivy"
+                if docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity HIGH,CRITICAL ${{ secrets.DOCKER_USERNAME }}/$svc:latest; then
+                  scanned+=("$svc")
+                  echo "📤 Pushing $svc images to Docker Hub"
                   if docker push ${{ secrets.DOCKER_USERNAME }}/$svc:latest && docker push ${{ secrets.DOCKER_USERNAME }}/$svc:$VERSION; then
-                    pushed="$pushed $svc"
-                    echo "$svc COMPLETED SUCCESSFULLY"
+                    pushed+=("$svc")
+                    echo "✅ $svc COMPLETED SUCCESSFULLY"
                   else
-                    echo "Push FAILED for $svc"
-                    failed="$failed $svc"
+                    echo "❌ Push FAILED for $svc"
+                    failed+=("$svc")
                     success=false
                   fi
                 else
-                  echo "Trivy scan FAILED for $svc"
-                  failed="$failed $svc"
+                  echo "❌ Trivy scan FAILED for $svc"
+                  failed+=("$svc")
                   success=false
                 fi
               else
-                echo "Build FAILED for $svc"
-                failed="$failed $svc"
+                echo "❌ Build FAILED for $svc"
+                failed+=("$svc")
                 success=false
               fi
             else
-              skipped="$skipped $svc"
-              echo "Skipping build/scan/push for $svc due to earlier failures"
+              skipped+=("$svc")
+              echo "⚠️ Skipping build/scan/push for $svc due to earlier failures"
             fi
           done
-          echo "PIPELINE SUMMARY"
-          echo "Built: $built"
-          echo "Tested: $tested"
-          echo "Scanned: $scanned"
-          echo "Pushed: $pushed"
-          echo "Skipped: $skipped"
-          echo "Failed: $failed"
-          if [ -n "$failed" ]; then
-            echo "PIPELINE FAILED; some builds/tests/scans/pushes did not succeed"
+          echo ""
+          echo "============= PIPELINE SUMMARY ============="
+          echo "Built:     ${built[*]}"
+          echo "Tested:    ${tested[*]}"
+          echo "Scanned:   ${scanned[*]}"
+          echo "Pushed:    ${pushed[*]}"
+          echo "Skipped:   ${skipped[*]}"
+          echo "Failed:    ${failed[*]}"
+          echo "============================================"
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "❌ PIPELINE FAILED (some builds/tests/scans/pushes did not succeed)"
             exit 1
           else
-            echo "ALL SERVICES BUILT, TESTED, SCANNED & PUSHED SUCCESSFULLY"
+            echo "🎉 ALL SERVICES BUILT, TESTED, SCANNED & PUSHED SUCCESSFULLY"
           fi
