@@ -1,0 +1,40 @@
+version: 2
+updates:
+  # 1️⃣ Keep GitHub Actions up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"   # can be daily, weekly, or monthly
+    labels:
+      - "dependencies"
+      - "ci-cd"
+    commit-message:
+      prefix: "⬆️ ci"
+    assignees:
+      - "pammietl4"
+
+  # 2️⃣ Keep Node.js dependencies updated for user-auth-service
+  - package-ecosystem: "npm"
+    directory: "/user-profile/user-auth-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "node"
+    commit-message:
+      prefix: "⬆️ npm"
+    assignees:
+      - "pammietl4"
+
+  # 3️⃣ Keep Docker base images updated
+  - package-ecosystem: "docker"
+    directory: "/user-profile/user-auth-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "⬆️ docker"
+    assignees:
+      - "pammietl4"
