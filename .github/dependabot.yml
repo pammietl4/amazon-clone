@@ -37,4 +37,8 @@ updates:
     commit-message:
       prefix: "⬆️ docker"
     assignees:
+<<<<<<< HEAD
       - "pammietl4"
+=======
+      - "pammietl4"
+>>>>>>> 166ae73aa851cce17221ead2a082e976e00e78f5
